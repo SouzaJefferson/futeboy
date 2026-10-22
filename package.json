@@ -1,0 +1,22 @@
+{
+  "name": "futeboy",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": ["frontend", "backend"],
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "concurrently -k -n API,WEB -c green,blue \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w backend && npm run build -w frontend",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test -w backend",
+    "test:integration": "npm run test:integration -w backend",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:generate": "npm run db:generate -w backend",
+    "db:migrate": "npm run db:migrate -w backend",
+    "db:seed": "npm run db:seed -w backend",
+    "db:studio": "npm run db:studio -w backend"
+  },
+  "devDependencies": { "concurrently": "^9.2.1" }
+}

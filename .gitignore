@@ -1,11 +1,4 @@
-node_modules/
-dist/
-.env
-.env.test
-*.log
-.data/
-coverage/
-test-results/
-.DS_Store
-.npm-cache/
-*.tsbuildinfo
+.venv/
+__pycache__/
+*.pyc
+peladafacil.db

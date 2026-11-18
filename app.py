@@ -7,6 +7,7 @@ import re
 import secrets
 import sqlite3
 import unicodedata
+import click
 
 from flask import Flask, current_app, jsonify, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -45,7 +46,8 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 nome TEXT NOT NULL,
                 email TEXT NOT NULL UNIQUE,
-                senha_hash TEXT NOT NULL
+                senha_hash TEXT NOT NULL,
+                is_admin INTEGER NOT NULL DEFAULT 0 CHECK(is_admin IN (0, 1))
             );
             CREATE TABLE IF NOT EXISTS partidas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +70,9 @@ def init_db():
             );
         ''')
         # Migração aditiva: preserva partidas e inscrições da versão anterior.
+        columns = {r['name'] for r in db.execute('PRAGMA table_info(usuarios)')}
+        if 'is_admin' not in columns:
+            db.execute('ALTER TABLE usuarios ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0 CHECK(is_admin IN (0, 1))')
         columns = {r['name'] for r in db.execute('PRAGMA table_info(partidas)')}
         if 'codigo' not in columns:
             db.execute('ALTER TABLE partidas ADD COLUMN codigo TEXT')
@@ -86,7 +91,7 @@ def user():
     if not session.get('usuario_id'):
         return None
     with connect() as db:
-        row = db.execute('SELECT id, nome, email FROM usuarios WHERE id=?',
+        row = db.execute('SELECT id, nome, email, is_admin FROM usuarios WHERE id=?',
                          (session['usuario_id'],)).fetchone()
     return dict(row) if row else None
 
@@ -96,6 +101,18 @@ def login_required(view):
     def wrapped(*args, **kwargs):
         if not user():
             return jsonify(erro='Entre na sua conta para continuar.'), 401
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def admin_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        account = user()
+        if not account:
+            return jsonify(erro='Entre na sua conta para continuar.'), 401
+        if not account['is_admin']:
+            return jsonify(erro='Acesso exclusivo para administradores.'), 403
         return view(*args, **kwargs)
     return wrapped
 
@@ -173,7 +190,7 @@ def create_app(config=None):
         session.permanent = True
         session['usuario_id'] = account['id']
         session['csrf_token'] = secrets.token_hex(32)
-        return jsonify(usuario={k: account[k] for k in ('id', 'nome', 'email')},
+        return jsonify(usuario={k: account[k] for k in ('id', 'nome', 'email', 'is_admin')},
                        csrf_token=session['csrf_token'])
 
     @app.post('/api/auth/cadastro')
@@ -194,7 +211,7 @@ def create_app(config=None):
                                  (nome, email, generate_password_hash(senha)))
             except sqlite3.IntegrityError:
                 return jsonify(erro='Este e-mail já está cadastrado.'), 409
-            account = dict(id=cur.lastrowid, nome=nome, email=email)
+            account = dict(id=cur.lastrowid, nome=nome, email=email, is_admin=0)
         return sign_in(account), 201
 
     @app.post('/api/auth/login')
@@ -331,6 +348,63 @@ def create_app(config=None):
             rows = db.execute('SELECT nome_jogador FROM participacoes WHERE partida_id=? ORDER BY id',
                               (partida_id,)).fetchall()
         return jsonify([r['nome_jogador'] for r in rows])
+
+    @app.get('/api/admin/partidas')
+    @admin_required
+    def admin_partidas():
+        with connect() as db:
+            rows = db.execute(MATCH_QUERY + ' GROUP BY p.id ORDER BY p.data_hora DESC, p.id DESC').fetchall()
+        return jsonify([serialize_partida(row) for row in rows])
+
+    @app.delete('/api/admin/partidas/<int:partida_id>')
+    @admin_required
+    def admin_excluir_partida(partida_id):
+        with connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            partida = db.execute('SELECT titulo FROM partidas WHERE id=?', (partida_id,)).fetchone()
+            if partida is None:
+                return jsonify(erro='Partida não encontrada.'), 404
+            # Exclusão explícita também suporta bancos antigos sem ON DELETE CASCADE.
+            db.execute('DELETE FROM participacoes WHERE partida_id=?', (partida_id,))
+            db.execute('DELETE FROM partidas WHERE id=?', (partida_id,))
+        return jsonify(mensagem=f'Partida "{partida["titulo"]}" e suas inscrições foram excluídas.')
+
+    @app.delete('/api/admin/partidas')
+    @admin_required
+    def admin_limpar_partidas():
+        if text(json_body(), 'confirmacao') != 'EXCLUIR TODOS':
+            return jsonify(erro='Digite EXCLUIR TODOS para confirmar a limpeza.'), 400
+        with connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            total = db.execute('SELECT COUNT(*) FROM partidas').fetchone()[0]
+            db.execute('DELETE FROM participacoes')
+            db.execute('DELETE FROM partidas')
+        return jsonify(mensagem=f'{total} partida(s) e suas inscrições foram excluídas. As contas foram mantidas.', excluidas=total)
+
+    @app.cli.command('criar-admin')
+    @click.option('--email', prompt='E-mail do administrador')
+    def criar_admin(email):
+        """Cria um administrador local ou promove uma conta já cadastrada."""
+        email = email.strip().casefold()
+        if len(email) > 254 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
+            raise click.ClickException('Informe um e-mail válido.')
+        with connect() as db:
+            existing = db.execute('SELECT id FROM usuarios WHERE email=?', (email,)).fetchone()
+        if existing:
+            with connect() as db:
+                db.execute('UPDATE usuarios SET is_admin=1 WHERE id=?', (existing['id'],))
+            click.echo('Conta promovida a administrador. Entre com sua senha atual.')
+            return
+        nome = ' '.join(click.prompt('Nome do administrador').split())
+        if not 2 <= len(nome) <= 80:
+            raise click.ClickException('O nome deve ter de 2 a 80 caracteres.')
+        senha = click.prompt('Senha (8 a 128 caracteres)', hide_input=True, confirmation_prompt='Repita a senha')
+        if not 8 <= len(senha) <= 128:
+            raise click.ClickException('A senha deve ter de 8 a 128 caracteres.')
+        with connect() as db:
+            db.execute('INSERT INTO usuarios(nome,email,senha_hash,is_admin) VALUES (?,?,?,1)',
+                       (nome, email, generate_password_hash(senha)))
+        click.echo('Administrador criado. Entre no site com esse e-mail e senha e abra Administração.')
 
     with app.app_context():
         init_db()

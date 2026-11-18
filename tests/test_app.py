@@ -35,6 +35,96 @@ class AppTests(unittest.TestCase):
         data.update(changes)
         return self.post(client or self.client, '/api/partidas', data)
 
+    def delete(self, client, path, body=None):
+        token = client.get('/api/auth/sessao').json['csrf_token']
+        return client.delete(path, json=body or {}, headers={'X-CSRF-Token': token})
+
+    def promote(self, email='ana@example.com'):
+        result = self.app.test_cli_runner().invoke(args=['criar-admin', '--email', email])
+        self.assertEqual(result.exit_code, 0, result.output)
+
+    def test_admin_permissions_and_no_public_promotion(self):
+        self.assertEqual(self.client.get('/api/admin/partidas').status_code, 401)
+        self.assertEqual(self.delete(self.client, '/api/admin/partidas').status_code, 401)
+        result = self.post(self.client, '/api/auth/cadastro', {'nome':'Ana Silva', 'email':'ana@example.com',
+            'senha':'senha-teste-123', 'is_admin':True})
+        self.assertEqual(result.json['usuario']['is_admin'], 0)
+        match = self.match().json
+        self.assertEqual(self.client.get('/api/admin/partidas').status_code, 403)
+        self.assertEqual(self.delete(self.client, f"/api/admin/partidas/{match['id']}").status_code, 403)
+        self.assertEqual(self.delete(self.client, '/api/admin/partidas', {'confirmacao':'EXCLUIR TODOS'}).status_code, 403)
+        self.promote()
+        self.assertEqual(self.client.get('/api/auth/sessao').json['usuario']['is_admin'], 1)
+        self.assertEqual(self.client.get('/api/admin/partidas').status_code, 200)
+        self.assertEqual(self.client.delete('/api/admin/partidas', json={'confirmacao':'EXCLUIR TODOS'}).status_code, 403)
+        with closing(sqlite3.connect(self.db_path)) as db, db:
+            db.execute('UPDATE usuarios SET is_admin=0')
+        self.assertEqual(self.client.get('/api/admin/partidas').status_code, 403)
+        self.assertEqual(len(self.client.get('/api/partidas').json), 1)
+
+    def test_admin_deletes_one_game_and_its_registrations(self):
+        self.register()
+        self.promote()
+        first, second = self.match().json, self.match().json
+        self.post(self.client, f"/api/partidas/{first['id']}/participar")
+        self.post(self.app.test_client(), f"/api/partidas/codigo/{first['codigo']}/participar", {'nome':'Convidado'})
+        self.post(self.client, f"/api/partidas/{second['id']}/participar")
+        result = self.delete(self.client, f"/api/admin/partidas/{first['id']}")
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(self.client.get(first['url']).status_code, 404)
+        self.assertEqual(self.client.get(f"/api/partidas/codigo/{first['codigo']}").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/partidas/{second['id']}/participantes").json, ['Ana Silva'])
+        self.assertEqual(self.delete(self.client, f"/api/admin/partidas/{first['id']}").status_code, 404)
+        with closing(sqlite3.connect(self.db_path)) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM participacoes').fetchone()[0], 1)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM usuarios').fetchone()[0], 1)
+
+    def test_admin_bulk_delete_requires_confirmation_and_keeps_accounts(self):
+        self.register()
+        self.promote()
+        other = self.app.test_client()
+        self.register(other, 'Bruno Silva', 'bruno@example.com')
+        for _ in range(2):
+            match = self.match().json
+            self.post(other, f"/api/partidas/{match['id']}/participar")
+        for data in ({}, {'confirmacao':'sim'}):
+            self.assertEqual(self.delete(self.client, '/api/admin/partidas', data).status_code, 400)
+            self.assertEqual(len(self.client.get('/api/partidas').json), 2)
+        result = self.delete(self.client, '/api/admin/partidas', {'confirmacao':'EXCLUIR TODOS'})
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json['excluidas'], 2)
+        self.assertEqual(self.client.get('/api/admin/partidas').json, [])
+        with closing(sqlite3.connect(self.db_path)) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM participacoes').fetchone()[0], 0)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM usuarios').fetchone()[0], 2)
+        self.assertEqual(self.client.get('/api/auth/sessao').json['usuario']['is_admin'], 1)
+        self.assertEqual(self.match().status_code, 201)
+
+    def test_cli_creates_admin_and_preserves_existing_password(self):
+        runner = self.app.test_cli_runner()
+        result = runner.invoke(args=['criar-admin'], input='admin@example.com\nAdministrador Local\nUma-senha-123\nUma-senha-123\n')
+        self.assertEqual(result.exit_code, 0, result.output)
+        login = self.post(self.client, '/api/auth/login', {'email':'admin@example.com', 'senha':'Uma-senha-123'})
+        self.assertEqual(login.status_code, 200)
+        self.assertEqual(login.json['usuario']['is_admin'], 1)
+        self.register(email='ana@example.com')
+        self.promote()
+        login = self.post(self.client, '/api/auth/login', {'email':'ana@example.com', 'senha':'senha-teste-123'})
+        self.assertEqual(login.status_code, 200)
+        self.assertEqual(login.json['usuario']['is_admin'], 1)
+
+    def test_migrate_existing_accounts_without_granting_admin(self):
+        old_path = str(Path(self.temp.name) / 'old_users.db')
+        with closing(sqlite3.connect(old_path)) as db, db:
+            db.executescript("CREATE TABLE usuarios(id INTEGER PRIMARY KEY, nome TEXT NOT NULL, email TEXT NOT NULL UNIQUE, senha_hash TEXT NOT NULL); INSERT INTO usuarios VALUES(1,'Conta antiga','antiga@example.com','hash-antigo');")
+        app = create_app({**self.config, 'DATABASE':old_path})
+        with closing(sqlite3.connect(old_path)) as db:
+            self.assertEqual(db.execute('SELECT is_admin FROM usuarios').fetchone()[0], 0)
+        result = app.test_cli_runner().invoke(args=['criar-admin', '--email', 'antiga@example.com'])
+        self.assertEqual(result.exit_code, 0, result.output)
+        with closing(sqlite3.connect(old_path)) as db:
+            self.assertEqual(db.execute('SELECT senha_hash,is_admin FROM usuarios').fetchone(), ('hash-antigo',1))
+
     def test_authentication_and_csrf(self):
         self.assertEqual(self.client.post('/api/auth/cadastro', json={}).status_code, 403)
         self.assertEqual(self.match().status_code, 401)

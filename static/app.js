@@ -8,6 +8,8 @@ let registering = false;
 let afterLogin = null;
 let loadVersion = 0;
 let matchData = [];
+let adminMatches = [];
+let deletion = null;
 const confirmedMatches = new Set();
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const formatDate = (date) => new Date(date).toLocaleString('pt-BR', {day:'2-digit',month:'long',hour:'2-digit',minute:'2-digit'});
@@ -29,6 +31,7 @@ function updateAccount(value) {
   $('#account-name').textContent = account ? `Olá, ${account.nome}` : '';
   $('#login-button').hidden = Boolean(account);
   $('#logout-button').hidden = !account;
+  $('#admin-button').hidden = !account?.is_admin;
 }
 
 async function loadMatches() {
@@ -110,6 +113,57 @@ async function submitForm(event, errorSelector, action) {
     if (error.status === 401) updateAccount(null);
   } finally { button.disabled = false; }
 }
+
+async function loadAdminMatches() {
+  $('#admin-list').replaceChildren();
+  $('#admin-clean').disabled = true;
+  $('#admin-status').textContent = 'Carregando partidas…';
+  try {
+    adminMatches = await api('/api/admin/partidas');
+    $('#admin-status').textContent = `${adminMatches.length} partida(s) cadastrada(s).`;
+    $('#admin-clean').disabled = !adminMatches.length;
+    $('#admin-list').innerHTML = adminMatches.length ? adminMatches.map(match => `
+      <article class="admin-match"><div><h3>${escapeHtml(match.titulo)}</h3><p>${escapeHtml(match.local)} • ${formatDate(match.data_hora)}</p><span>${match.participantes} inscrito(s) • ${escapeHtml(match.codigo)}</span></div><div class="admin-match-actions"><a class="secondary" href="${escapeHtml(match.url)}">Abrir</a><button type="button" class="danger-outline" data-delete="${match.id}" aria-label="Excluir ${escapeHtml(match.titulo)}">Excluir</button></div></article>`).join('') : '<p class="empty">Nenhuma partida para gerenciar.</p>';
+  } catch (error) { $('#admin-status').textContent = error.message; }
+}
+
+function openDeletion(match = null) {
+  deletion = match ? {id:match.id} : {all:true};
+  $('#delete-title').textContent = match ? 'Excluir partida?' : 'Limpar todos os jogos?';
+  $('#delete-description').textContent = match
+    ? `A partida “${match.titulo}” e suas ${match.participantes} inscrição(ões) serão excluídas.`
+    : `Todas as partidas e inscrições serão excluídas, incluindo jogos criados depois de abrir esta lista.`;
+  $('#delete-confirm-label').hidden = Boolean(match);
+  $('#delete-confirm').disabled = Boolean(match);
+  $('#delete-confirm').required = !match;
+  $('#delete-confirm').value = '';
+  $('#delete-submit').textContent = match ? 'Excluir partida' : 'Excluir todos os jogos';
+  $('#delete-error').textContent = '';
+  $('#delete-dialog').showModal();
+}
+
+$('#admin-button').addEventListener('click', () => {
+  $('#admin-dialog').showModal();
+  loadAdminMatches();
+});
+$('#admin-list').addEventListener('click', event => {
+  const button = event.target.closest('[data-delete]');
+  if (!button) return;
+  const match = adminMatches.find(item => item.id === Number(button.dataset.delete));
+  if (match) openDeletion(match);
+});
+$('#admin-clean').addEventListener('click', () => openDeletion());
+$('#delete-form').addEventListener('submit', event => submitForm(event, '#delete-error', async () => {
+  const result = await api(deletion.all ? '/api/admin/partidas' : `/api/admin/partidas/${deletion.id}`, {
+    method:'DELETE', body:JSON.stringify({confirmacao:$('#delete-confirm').value})
+  });
+  $('#delete-dialog').close();
+  confirmedMatches.clear();
+  await loadAdminMatches();
+  $('#admin-status').textContent = result.mensagem;
+  $('#feedback').textContent = result.mensagem;
+  await loadMatches();
+}));
 
 $('#show-form').addEventListener('click', openCreate);
 $('#hero-create').addEventListener('click', openCreate);

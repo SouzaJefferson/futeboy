@@ -8,7 +8,7 @@
 <body data-match-code="{{ codigo or '' }}" class="{{ 'invite-page' if codigo else 'agenda-page' }}">
 <header class="header"><div class="shell nav">
   <a class="brand" href="/" aria-label="PeladaFácil, início"><span class="brand-icon" aria-hidden="true">⚽</span> Pelada<span>Fácil</span><span class="brand-dot">.</span></a>
-  <div class="nav-actions"><span id="account-name" class="account-name"></span><button id="login-button" class="secondary">Entrar <span aria-hidden="true">↗</span></button><button id="logout-button" class="secondary" hidden>Sair</button><button id="show-form" class="button btn-small"><span aria-hidden="true">＋</span> Criar partida</button></div>
+  <div class="nav-actions"><span id="account-name" class="account-name"></span><button id="admin-button" class="secondary" aria-label="Administração" hidden>Admin</button><button id="login-button" class="secondary">Entrar <span aria-hidden="true">↗</span></button><button id="logout-button" class="secondary" hidden>Sair</button><button id="show-form" class="button btn-small"><span aria-hidden="true">＋</span> Criar partida</button></div>
 </div></header>
 <main class="shell">
   <section class="hero" {% if codigo %}hidden{% endif %}>
@@ -72,5 +72,17 @@
   <span class="eyebrow">HORÁRIOS MAIS COMUNS</span><div id="time-presets" class="time-presets"><button type="button" data-time="07:00">07:00</button><button type="button" data-time="09:00">09:00</button><button type="button" data-time="16:00">16:00</button><button type="button" data-time="18:00">18:00</button><button type="button" data-time="19:00">19:00</button><button type="button" data-time="20:00">20:00</button></div>
   <div class="picker-actions"><button id="time-clear" class="secondary" type="button">Sem limite</button><button id="time-confirm" class="button" type="button">Usar horário →</button></div>
 </div></dialog>
+<dialog id="admin-dialog" class="admin-dialog" aria-labelledby="admin-title"><div class="dialog-content">
+  <div class="sheet-handle" aria-hidden="true"></div><div class="modal-heading"><div><div class="eyebrow">GESTÃO DAS PARTIDAS</div><h2 id="admin-title">Administração</h2></div><button class="close" type="button" data-close="admin-dialog" aria-label="Fechar administração">×</button></div>
+  <p class="subtitle">Gerencie todos os jogos, inclusive os encerrados. Ao excluir uma partida, as inscrições dela também são removidas.</p>
+  <p id="admin-status" class="subtitle" role="status" aria-live="polite"></p><div id="admin-list" class="admin-list"></div>
+  <div class="admin-danger-zone"><div><strong>Limpar todos os jogos</strong><p>Remove todas as partidas e inscrições. As contas de usuários são mantidas.</p></div><button id="admin-clean" type="button" class="danger-outline" disabled>Limpar todos os jogos</button></div>
+</div></dialog>
+<dialog id="delete-dialog" aria-labelledby="delete-title"><form id="delete-form" class="dialog-content">
+  <div class="sheet-handle" aria-hidden="true"></div><div class="modal-heading"><div><div class="eyebrow">CONFIRMAR EXCLUSÃO</div><h2 id="delete-title">Excluir partida?</h2></div><button class="close" type="button" data-close="delete-dialog" aria-label="Cancelar exclusão">×</button></div>
+  <p id="delete-description" class="subtitle"></p><div class="info-note delete-note"><p>Esta ação é permanente. As contas de usuários serão preservadas.</p></div>
+  <label id="delete-confirm-label" hidden>Digite EXCLUIR TODOS para confirmar<input id="delete-confirm" autocomplete="off" spellcheck="false" autocapitalize="characters" pattern="EXCLUIR TODOS" disabled></label>
+  <p id="delete-error" class="form-error" role="alert"></p><button id="delete-submit" type="submit" class="button danger">Excluir partida</button><button type="button" class="secondary" data-close="delete-dialog">Cancelar</button>
+</form></dialog>
 <script src="{{ url_for('static', filename='pickers.js') }}"></script><script src="{{ url_for('static', filename='app.js') }}"></script>
 </body></html>

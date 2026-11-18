@@ -75,6 +75,31 @@ Os campos de horário abrem um modal com seletores de hora/minutos e atalhos de 
 
 O local aceita parte do texto, sem diferenciar maiúsculas ou acentos: `sao jose` encontra `Praça São José`. Os limites de horário são inclusivos. Uma faixa de `22:00` a `02:00` abrange horários antes e depois da meia-noite. Quando há filtro de data, ele continua se referindo à data de início da partida. Horários usam o fuso local do servidor.
 
+## Administrador e exclusão de jogos
+
+No PowerShell, dentro da pasta do projeto, execute uma vez:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app criar-admin
+```
+
+Informe o e-mail do administrador. Se já existir uma conta com esse e-mail, ela recebe acesso de administrador e mantém a senha atual. Se for uma conta nova, o terminal solicita nome e senha (com confirmação, sem exibir a senha durante a digitação).
+
+Depois, inicie ou reinicie o servidor normalmente, entre no site com essa conta e clique em **Admin** no topo. Se a conta já estiver conectada, recarregue a página para mostrar o botão.
+
+- **Excluir**: remove a partida escolhida e suas inscrições após confirmação no modal.
+- **Limpar todos os jogos**: exige digitar `EXCLUIR TODOS` e confirmar. Remove todas as partidas e inscrições existentes no momento da confirmação.
+- As contas de usuários, senhas e permissões são preservadas.
+- As exclusões são permanentes; os links das partidas removidas deixam de funcionar.
+
+O cadastro público nunca concede privilégios de administrador. Contas antigas também continuam como usuários comuns até serem promovidas pelo comando local. As APIs validam a permissão no banco a cada acesso.
+
+## Dados locais e Git
+
+`peladafacil.db`, os auxiliares SQLite (`*.db-journal`, `*.db-wal`, `*.db-shm`) e `.session-secret` estão no `.gitignore`. Jogos, inscrições, contas, hashes de senha e permissões ficam no banco local e não são enviados em um commit normal. O código das tabelas e das migrações é versionado para que cada instalação crie seu próprio banco.
+
+Arquivos ignorados ainda podem ser adicionados à força com `git add -f`; não faça isso com o banco ou a chave de sessão. A limpeza administrativa serve para gerenciar os jogos locais e não é necessária antes de um commit.
+
 ## API
 
 As rotas POST exigem cookie de sessão e cabeçalho `X-CSRF-Token`. Obtenha o token em `GET /api/auth/sessao`; cadastro, login e logout devolvem um novo token.
@@ -91,6 +116,9 @@ As rotas POST exigem cookie de sessão e cabeçalho `X-CSRF-Token`. Obtenha o to
 | POST | `/api/partidas/<id>/participar` | Confirmar presença da conta (exige login) |
 | POST | `/api/partidas/codigo/<codigo>/participar` | Confirmar pelo convite: `{ "nome": "Nome do jogador" }` sem login; conectado, usa o nome da conta |
 | GET | `/api/partidas/<id>/participantes` | Listar nomes dos inscritos |
+| GET | `/api/admin/partidas` | Listar todos os jogos (administrador) |
+| DELETE | `/api/admin/partidas/<id>` | Excluir uma partida e inscrições (administrador) |
+| DELETE | `/api/admin/partidas` | Limpar jogos e inscrições com `{ "confirmacao": "EXCLUIR TODOS" }` (administrador) |
 
 Para integrar com um servidor WSGI, use a fábrica `app:create_app()`.
 
@@ -100,8 +128,8 @@ Para integrar com um servidor WSGI, use a fábrica `app:create_app()`.
 python -m unittest discover -s tests -v
 ```
 
-A suíte usa bancos temporários e cobre autenticação, CSRF, senhas, convites, confirmação sem conta, persistência, filtros, validações, inscrições simultâneas de usuários e convidados e migração de bancos antigos.
+A suíte usa bancos temporários e cobre autenticação, CSRF, senhas, convites, confirmação sem conta, persistência, filtros, validações, inscrições simultâneas, migração, permissões administrativas, criação de administrador e exclusão de jogos com preservação de contas.
 
 ## Escopo do protótipo
 
-Não inclui recuperação de senha, confirmação de e-mail, cancelamento de presença, exclusão de partidas ou envio automático de mensagens. O servidor embutido destina-se a desenvolvimento e testes locais. Uma publicação exige configuração de produção com HTTPS, cookie Secure e proteção contra abuso. O modo de depuração só é ativado com `FLASK_DEBUG=1`.
+Não inclui recuperação de senha, confirmação de e-mail, cancelamento de presença ou envio automático de mensagens. O servidor embutido destina-se a desenvolvimento e testes locais. Uma publicação exige configuração de produção com HTTPS, cookie Secure e proteção contra abuso. O modo de depuração só é ativado com `FLASK_DEBUG=1`.

@@ -1,8 +1,76 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PeladaFácil • futebol sem enrolação</title><link rel="stylesheet" href="/static/style.css"></head>
-<body><header class="header"><div class="shell nav"><a class="brand" href="/">⚽ Pelada<span>Fácil</span></a><span class="nav-label">Sua próxima pelada começa aqui</span><button id="show-form" class="button btn-small">+ Criar partida</button></div></header>
-<main class="shell"><section class="hero"><div class="eyebrow">FUTEBOL DE BAIRRO, ORGANIZADO</div><h1>Menos grupo de WhatsApp.<br><em>Mais bola rolando.</em></h1><p>Encontre uma partida perto de você, veja as vagas e confirme sua presença em segundos.</p><button id="hero-create" class="button">Organizar uma pelada <span>↗</span></button></section>
-<section class="section"><div class="section-heading"><div><div class="eyebrow">AGENDA DA GALERA</div><h2>Próximas partidas</h2></div><span id="counter" class="counter"></span></div><p id="feedback" class="feedback" role="status" aria-live="polite"></p><div id="matches" class="matches"><p>Carregando partidas…</p></div></section></main>
-<dialog id="create-dialog"><form id="create-form" class="dialog-content"><div class="modal-heading"><div><div class="eyebrow">ORGANIZE O JOGO</div><h2>Nova partida</h2></div><button class="close" type="button" data-close="create-dialog" aria-label="Fechar">×</button></div><label>Nome da partida<input name="titulo" placeholder="Ex.: Pelada de sábado" maxlength="90" minlength="3" required></label><label>Local<input name="local" placeholder="Ex.: Quadra da Praça Central" maxlength="120" minlength="3" required></label><div class="two"><label>Data e hora<input name="data_hora" type="datetime-local" required></label><label>Vagas totais<input name="limite" type="number" min="2" max="100" value="10" required></label></div><p class="form-error" id="create-error" role="alert"></p><button class="button full" type="submit">Criar partida</button></form></dialog>
-<dialog id="join-dialog"><form id="join-form" class="dialog-content"><div class="modal-heading"><div><div class="eyebrow">TÁ DENTRO?</div><h2>Confirmar presença</h2></div><button class="close" type="button" data-close="join-dialog" aria-label="Fechar">×</button></div><p id="join-match-name" class="subtitle"></p><label>Seu nome completo<input name="nome" placeholder="Como podemos te chamar?" maxlength="80" minlength="2" required></label><p class="form-error" id="join-error" role="alert"></p><button class="button full" type="submit">Confirmar minha vaga</button></form></dialog>
-<script src="/static/app.js"></script></body></html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#123d2c"><title>PeladaFácil • Bora pro jogo</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-match-code="{{ codigo or '' }}" class="{{ 'invite-page' if codigo else 'agenda-page' }}">
+<header class="header"><div class="shell nav">
+  <a class="brand" href="/" aria-label="PeladaFácil, início"><span class="brand-icon" aria-hidden="true">⚽</span> Pelada<span>Fácil</span><span class="brand-dot">.</span></a>
+  <div class="nav-actions"><span id="account-name" class="account-name"></span><button id="login-button" class="secondary">Entrar <span aria-hidden="true">↗</span></button><button id="logout-button" class="secondary" hidden>Sair</button><button id="show-form" class="button btn-small"><span aria-hidden="true">＋</span> Criar partida</button></div>
+</div></header>
+<main class="shell">
+  <section class="hero" {% if codigo %}hidden{% endif %}>
+    <div class="hero-copy"><div class="hero-tag"><span></span> O SEU PRÓXIMO JOGO TÁ AQUI</div><h1>Chama a galera.<br><em>O resto é com a gente.</em></h1><p>Da primeira mensagem ao apito inicial.<br>Organize sua pelada e só se preocupe em jogar.</p><button id="hero-create" class="button">Bora organizar <span aria-hidden="true">↗</span></button><div class="hero-note"><span aria-hidden="true">✓</span> Convide por link. Confirme só com o nome.</div></div>
+    <div class="pitch" aria-hidden="true"><div class="pitch-lines"><div class="pitch-circle"></div><div class="pitch-goal goal-top"></div><div class="pitch-goal goal-bottom"></div></div><span class="pitch-player player-one">10</span><span class="pitch-player player-two">07</span><span class="pitch-player player-three">09</span><span class="pitch-ball">⚽</span><div class="pitch-caption">MENOS CONVERSA. MAIS FUTEBOL.</div></div>
+  </section>
+  <section class="invite-intro" {% if not codigo %}hidden{% endif %}><a href="/" class="back-link">← Explorar partidas</a><div class="eyebrow">CONVITE RECEBIDO</div><h1>Tem lugar pra você<br>nesse jogo<span>.</span></h1><p>É só informar seu nome e confirmar. Sem precisar criar conta.</p></section>
+  <section class="section">
+    <form id="code-form" class="code-search" {% if codigo %}hidden{% endif %}><div><span class="eyebrow">JÁ TÁ NO GRUPO?</span><label for="match-code">Entre com o código da partida</label></div><div class="code-row"><input id="match-code" name="codigo" placeholder="Ex.: AB3D5FGH" maxlength="8" minlength="8" pattern="[A-Za-z0-9]{8}" required autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="button" type="submit">Acessar <span aria-hidden="true">→</span></button></div><p id="code-error" class="form-error" role="alert"></p></form>
+    <div class="section-heading"><div><div class="eyebrow">{{ 'BORA CONFIRMAR?' if codigo else 'ESCOLHA SEU PRÓXIMO JOGO' }}</div><h2 id="list-title">{{ 'Sua partida' if codigo else 'Agenda de partidas' }}</h2></div><span id="counter" class="counter"></span></div>
+    <form id="filters" class="filters" {% if codigo %}hidden{% endif %}>
+      <label class="filter-place">Onde você quer jogar?<input name="local" placeholder="Bairro, quadra ou cidade" maxlength="120"></label>
+      <div class="field"><span id="filter-date-label">Qual dia?</span><input name="data" type="hidden" id="filter-day"><button type="button" class="picker-trigger" data-date-target="filter-day" data-placeholder="Qualquer dia" aria-haspopup="dialog" aria-labelledby="filter-date-label filter-date-text"><span id="filter-date-text" data-picker-text>Qualquer dia</span><span aria-hidden="true">▦</span></button></div>
+      <div class="field"><span id="filter-start-label">A partir de</span><input name="hora_inicio" type="hidden" id="filter-start"><button type="button" class="picker-trigger" data-time-target="filter-start" data-placeholder="Sem limite" aria-haspopup="dialog" aria-labelledby="filter-start-label filter-start-text"><span id="filter-start-text" data-picker-text>Sem limite</span><span aria-hidden="true">◷</span></button></div>
+      <div class="field"><span id="filter-end-label">Até</span><input name="hora_fim" type="hidden" id="filter-end"><button type="button" class="picker-trigger" data-time-target="filter-end" data-placeholder="Sem limite" aria-haspopup="dialog" aria-labelledby="filter-end-label filter-end-text"><span id="filter-end-text" data-picker-text>Sem limite</span><span aria-hidden="true">◷</span></button></div>
+      <div class="filter-actions"><button class="button" type="submit">Buscar jogos</button><button class="secondary" type="reset">Limpar</button></div>
+    </form>
+    <p id="feedback" class="feedback" role="status" aria-live="polite"></p><div id="matches" class="matches" aria-busy="true"><div class="empty">Preparando o campo…</div></div>
+    <p class="page-note">Feito pra juntar a galera. E deixar a bola rolar.</p>
+  </section>
+</main>
+<div id="invite-bar" class="invite-bar" hidden><div><strong>Bora pro jogo?</strong><span>Confirme só com seu nome</span></div><button id="invite-join" class="button">Confirmar presença →</button></div>
+<dialog id="auth-dialog" aria-labelledby="auth-title"><form id="auth-form" class="dialog-content">
+  <div class="sheet-handle" aria-hidden="true"></div><div class="modal-heading"><div><div class="eyebrow">SUA CONTA, SEUS JOGOS</div><h2 id="auth-title">Bom te ver por aqui.</h2></div><button class="close" type="button" data-close="auth-dialog" aria-label="Fechar">×</button></div>
+  <p class="subtitle">Entre para organizar partidas. Recebeu um convite? Você pode confirmar só com seu nome.</p>
+  <label id="register-name" hidden>Seu nome completo<input name="nome" minlength="2" maxlength="80" autocomplete="name" disabled placeholder="Como a galera te chama?"></label>
+  <label>E-mail<input name="email" type="email" maxlength="254" autocomplete="username" inputmode="email" required placeholder="voce@exemplo.com"></label>
+  <label>Senha<input name="senha" type="password" maxlength="128" autocomplete="current-password" required placeholder="Sua senha"></label>
+  <p id="auth-error" class="form-error" role="alert"></p><button id="auth-submit" class="button full" type="submit">Entrar na conta →</button><button id="auth-toggle" type="button" class="secondary">Ainda não tem conta? Cadastre-se</button>
+</form></dialog>
+<dialog id="create-dialog" aria-labelledby="create-title"><form id="create-form" class="dialog-content">
+  <div class="sheet-handle" aria-hidden="true"></div><div class="modal-heading"><div><div class="eyebrow">A BOLA TÁ COM VOCÊ</div><h2 id="create-title">Organize sua pelada.</h2></div><button class="close" type="button" data-close="create-dialog" aria-label="Fechar">×</button></div>
+  <label>Nome da partida<input name="titulo" placeholder="Ex.: A clássica de sábado" maxlength="90" minlength="3" required></label>
+  <label>Onde vai ser?<input name="local" placeholder="Quadra, bairro ou endereço" maxlength="120" minlength="3" required></label>
+  <div class="two"><div class="field"><span id="create-date-label">Dia do jogo</span><input type="hidden" id="create-day" data-future="true"><button type="button" class="picker-trigger" data-date-target="create-day" data-placeholder="Escolher dia" aria-haspopup="dialog" aria-labelledby="create-date-label create-date-text"><span id="create-date-text" data-picker-text>Escolher dia</span><span aria-hidden="true">▦</span></button></div><div class="field"><span id="create-time-label">Horário</span><input type="hidden" id="create-hour" value="19:00"><button type="button" class="picker-trigger" data-time-target="create-hour" data-placeholder="Escolher hora" aria-haspopup="dialog" aria-labelledby="create-time-label create-time-text"><span id="create-time-text" data-picker-text>19:00</span><span aria-hidden="true">◷</span></button></div></div>
+  <input type="hidden" name="data_hora" id="create-date-time"><label>Quantos jogadores?<input name="limite" type="number" min="2" max="100" value="10" inputmode="numeric" required></label>
+  <div class="info-note"><span aria-hidden="true">↗</span><p>A partida ganha um link e um código. Quem receber pode confirmar sem cadastro.</p></div>
+  <p class="form-error" id="create-error" role="alert"></p><button class="button full" type="submit">Criar e chamar a galera →</button>
+</form></dialog>
+<dialog id="join-dialog" aria-labelledby="join-title"><form id="join-form" class="dialog-content">
+  <div class="sheet-handle" aria-hidden="true"></div><div class="modal-heading"><div><div class="eyebrow">O PRÓXIMO GOL PODE SER SEU</div><h2 id="join-title">Bora pro jogo?</h2></div><button class="close" type="button" data-close="join-dialog" aria-label="Fechar">×</button></div>
+  <p id="join-match-name" class="match-summary"></p><label>Seu nome<input id="join-name" name="nome" minlength="2" maxlength="80" required autocomplete="name" placeholder="Como a galera te chama?"></label><p id="join-hint" class="subtitle">Só isso. Sem cadastro, sem complicação.</p>
+  <p class="form-error" id="join-error" role="alert"></p><button class="button full" type="submit">Confirmar minha vaga →</button><button id="join-login" type="button" class="secondary">Já tenho conta. Quero entrar</button>
+</form></dialog>
+<dialog id="share-dialog" aria-labelledby="share-title"><div class="dialog-content">
+  <div class="sheet-handle" aria-hidden="true"></div><div class="modal-heading"><div><div class="eyebrow">JOGO BOM É JOGO CHEIO</div><h2 id="share-title">Chama a galera.</h2></div><button class="close" type="button" data-close="share-dialog" aria-label="Fechar">×</button></div>
+  <p class="subtitle">Envie o convite. A galera só precisa informar o nome para entrar no jogo.</p><label>Link do convite<input id="share-url" readonly></label><button id="copy-link" class="button" type="button">Copiar link do convite ↗</button>
+  <div class="share-code-box"><span class="eyebrow">OU USE O CÓDIGO</span><label class="sr-only" for="share-code">Código de acesso</label><input id="share-code" readonly></div><p id="share-feedback" class="subtitle" role="status"></p><a id="open-invite" class="text-link" href="/">Abrir convite →</a>
+</div></dialog>
+<dialog id="people-dialog" aria-labelledby="people-title"><div class="dialog-content"><div class="sheet-handle" aria-hidden="true"></div><div class="modal-heading"><div><div class="eyebrow">O TIME TÁ SE FORMANDO</div><h2 id="people-title">Quem vai jogar</h2></div><button class="close" type="button" data-close="people-dialog" aria-label="Fechar">×</button></div><p id="people-status" class="subtitle" role="status"></p><ol id="people-list"></ol></div></dialog>
+<dialog id="date-dialog" class="picker-dialog" aria-labelledby="date-title"><div class="dialog-content">
+  <div class="sheet-handle" aria-hidden="true"></div><div class="modal-heading"><div><div class="eyebrow">MARQUE NA AGENDA</div><h2 id="date-title">Escolha o dia</h2></div><button class="close" type="button" data-close="date-dialog" aria-label="Fechar calendário">×</button></div>
+  <div class="calendar-nav"><button id="calendar-prev" class="icon-button" type="button" aria-label="Mês anterior">←</button><button id="calendar-month" class="month-button" type="button" aria-expanded="false" aria-controls="calendar-months"></button><button id="calendar-next" class="icon-button" type="button" aria-label="Próximo mês">→</button></div>
+  <div id="calendar-days"><div class="weekdays" aria-hidden="true"><span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span></div><div id="calendar-grid" class="calendar-grid" role="group" aria-label="Dias do mês"></div></div>
+  <div id="calendar-months" class="month-grid" aria-label="Escolher mês" hidden></div><p id="date-selection" class="picker-selection" aria-live="polite"></p>
+  <div class="picker-actions"><button id="date-clear" class="secondary" type="button">Qualquer dia</button><button id="date-confirm" class="button" type="button" disabled>Usar esta data →</button></div>
+</div></dialog>
+<dialog id="time-dialog" class="picker-dialog" aria-labelledby="time-title"><div class="dialog-content">
+  <div class="sheet-handle" aria-hidden="true"></div><div class="modal-heading"><div><div class="eyebrow">HORA DE ENTRAR EM CAMPO</div><h2 id="time-title">Escolha o horário</h2></div><button class="close" type="button" data-close="time-dialog" aria-label="Fechar horários">×</button></div>
+  <div class="time-selectors"><label>Hora<select id="time-hour" aria-label="Hora"></select></label><span aria-hidden="true">:</span><label>Minutos<select id="time-minute" aria-label="Minutos"></select></label></div>
+  <span class="eyebrow">HORÁRIOS MAIS COMUNS</span><div id="time-presets" class="time-presets"><button type="button" data-time="07:00">07:00</button><button type="button" data-time="09:00">09:00</button><button type="button" data-time="16:00">16:00</button><button type="button" data-time="18:00">18:00</button><button type="button" data-time="19:00">19:00</button><button type="button" data-time="20:00">20:00</button></div>
+  <div class="picker-actions"><button id="time-clear" class="secondary" type="button">Sem limite</button><button id="time-confirm" class="button" type="button">Usar horário →</button></div>
+</div></dialog>
+<script src="{{ url_for('static', filename='pickers.js') }}"></script><script src="{{ url_for('static', filename='app.js') }}"></script>
+</body></html>
